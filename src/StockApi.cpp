@@ -20,8 +20,17 @@ StockData fetch_stock(String stock_symbol) {
       data.company = new char[strlen(doc["company"]) + 1];
       strcpy(data.company, doc["company"]);
 
-      data.current_price = doc["current_price"];
-      data.price_change = doc["price_change"];
+      if (doc.containsKey("after_hours_price")) {
+        data.current_price = doc["after_hours_price"];
+      } else {
+        data.current_price = doc["current_price"];
+      }
+
+      if (doc.containsKey("after_hours_change")) {
+        data.after_hours_change = doc["after_hours_change"];
+      } else {
+        data.price_change = doc["price_change"];
+      }
 
       data.last_update = new char[strlen(doc["last_updated"]) + 1];
       strcpy(data.last_update, doc["last_updated"]);

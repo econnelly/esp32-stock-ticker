@@ -22,6 +22,7 @@ void calculateDataPoints(float rawData[5], float dataPoints[5], int height);
 void drawGraphLines(float data[5], int width, int height, int xOffset, int yOffset);
 void drawGraph(float data[5]);
 void drawCurrentPrice(float currentPrice, float change);
+void drawLastUpdate(char *updateMessage);
 void render();
 void fetchStockBySymbol(void *parameter);
 void connectToWifi(void *parameter);

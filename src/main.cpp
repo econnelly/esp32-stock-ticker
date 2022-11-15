@@ -8,6 +8,7 @@ TFT_eSprite background = TFT_eSprite(&tft);
 TFT_eSprite header = TFT_eSprite(&tft);
 TFT_eSprite graph = TFT_eSprite(&tft);
 TFT_eSprite price = TFT_eSprite(&tft);
+TFT_eSprite lastUpdate = TFT_eSprite(&tft);
 
 WifiState wifiState = NOT_CONNECTED;
 StockData stockData;
@@ -18,10 +19,10 @@ void setup() {
 
   connectToWifi(NULL);
 
-  stockData = fetch_stock("GOOGL");
+  stockData = fetch_stock("GOOG");
 
   // xTaskCreatePinnedToCore(connectToWifi, "Wifi", 5000, NULL, 1, NULL, ARDUINO_RUNNING_CORE);
-  xTaskCreatePinnedToCore(fetchStockBySymbol, "StockFetcher", 5000, (void *)"GOOGL", 1, NULL, ARDUINO_RUNNING_CORE);
+  xTaskCreatePinnedToCore(fetchStockBySymbol, "StockFetcher", 5000, (void *)"GOOG", 1, NULL, ARDUINO_RUNNING_CORE);
 
   tft.init();
   tft.fillScreen(TFT_BLACK);
@@ -39,6 +40,9 @@ void setup() {
 
   price.createSprite(109, 110);
   price.setSwapBytes(true);
+
+  lastUpdate.createSprite(320, 50);
+  lastUpdate.setSwapBytes(true);
 }
 
 void connectToWifi(void *parameter) {
@@ -161,9 +165,7 @@ void drawCurrentPrice(float currentPrice, float change) {
   price.loadFont(NotoSansBold15);
   price.setTextColor(TFT_WHITE);
   price.drawString(String(currentPrice), 10, 10);
-  price.unloadFont();
 
-  price.loadFont(NotoSansBold15);
   if (change > 0) {
     price.setTextColor(TFT_GREEN);
   } else if (change == 0) {
@@ -176,10 +178,19 @@ void drawCurrentPrice(float currentPrice, float change) {
   price.unloadFont();
 }
 
+void drawLastUpdate(char *updateMessage) {
+  lastUpdate.fillRect(0, 0, 320, 50, TFT_BLACK);
+  lastUpdate.loadFont(NotoSansBold15);
+  lastUpdate.setTextColor(TFT_WHITE);
+  lastUpdate.drawString(updateMessage, 10, 30);
+  lastUpdate.unloadFont();
+}
+
 void render() {
   header.pushToSprite(&background, 0, 5);
   graph.pushToSprite(&background, 0, 60);
   price.pushToSprite(&background, 211, 60);
+  lastUpdate.pushToSprite(&background, 0, 119);
 
   background.pushSprite(0, 0);
 }
@@ -191,5 +202,6 @@ void loop() {
   drawTitle(stockData.company);
   drawGraph(stockData.price_history);
   drawCurrentPrice(stockData.current_price, stockData.price_change);
+  drawLastUpdate(stockData.last_update);
   render();
 }
