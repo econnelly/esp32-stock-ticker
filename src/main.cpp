@@ -13,13 +13,16 @@ TFT_eSprite lastUpdate = TFT_eSprite(&tft);
 WifiState wifiState = NOT_CONNECTED;
 StockData stockData;
 
+int32_t lastUpdateTime = 0;
+int32_t lastFetchTime = 0;
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Hello T-Display-S3");
 
   connectToWifi(NULL);
 
-  stockData = fetch_stock("GOOG");
+  // stockData = fetch_stock("GOOG");
 
   // xTaskCreatePinnedToCore(connectToWifi, "Wifi", 5000, NULL, 1, NULL, ARDUINO_RUNNING_CORE);
   xTaskCreatePinnedToCore(fetchStockBySymbol, "StockFetcher", 5000, (void *)"GOOG", 1, NULL, ARDUINO_RUNNING_CORE);
@@ -62,6 +65,7 @@ void fetchStockBySymbol(void *parameter) {
   for(;;) {
     if (wifiState == CONNECTED) {
       stockData = fetch_stock((char *)parameter);
+      lastFetchTime = millis();
     }
     vTaskDelay(5000);
   }
@@ -97,6 +101,8 @@ void drawTitle(const char *title) {
   header.setTextSize(1);
   header.drawString(title, 10, 15);
   header.unloadFont();
+
+  header.pushToSprite(&background, 0, 5);
 }
 
 /*
@@ -157,6 +163,8 @@ void drawGraph(float data[5]) {
   }
 
   drawGraphLines(data, 165, 40, 50, 10);
+
+  graph.pushToSprite(&background, 0, 60);
 }
 
 void drawCurrentPrice(float currentPrice, float change) {
@@ -164,6 +172,7 @@ void drawCurrentPrice(float currentPrice, float change) {
   price.fillRect(0, 0, 109, 110, TFT_BLACK);
   price.loadFont(NotoSansBold15);
   price.setTextColor(TFT_WHITE);
+  price.setTextSize(1);
   price.drawString(String(currentPrice), 10, 10);
 
   if (change > 0) {
@@ -176,21 +185,25 @@ void drawCurrentPrice(float currentPrice, float change) {
 
   price.drawString(String(change), 109 - 10 - 50, 45);
   price.unloadFont();
+
+  price.pushToSprite(&background, 211, 60);
 }
 
 void drawLastUpdate(char *updateMessage) {
   lastUpdate.fillRect(0, 0, 320, 50, TFT_BLACK);
   lastUpdate.loadFont(NotoSansBold15);
   lastUpdate.setTextColor(TFT_WHITE);
+  lastUpdate.setTextSize(1);
   lastUpdate.drawString(updateMessage, 10, 30);
   lastUpdate.unloadFont();
+  lastUpdate.pushToSprite(&background, 0, 119);
 }
 
 void render() {
-  header.pushToSprite(&background, 0, 5);
-  graph.pushToSprite(&background, 0, 60);
-  price.pushToSprite(&background, 211, 60);
-  lastUpdate.pushToSprite(&background, 0, 119);
+  drawTitle(stockData.company);
+  drawGraph(stockData.price_history);
+  drawCurrentPrice(stockData.current_price, stockData.price_change);
+  drawLastUpdate(stockData.last_update);
 
   background.pushSprite(0, 0);
 }
@@ -199,9 +212,8 @@ void loop() {
   background.fillSprite(TFT_BLACK);
   background.loadFont(NotoSansBold15);
 
-  drawTitle(stockData.company);
-  drawGraph(stockData.price_history);
-  drawCurrentPrice(stockData.current_price, stockData.price_change);
-  drawLastUpdate(stockData.last_update);
-  render();
+  if (lastUpdateTime < lastFetchTime) {
+    render();
+    lastUpdateTime = millis();
+  }
 }
