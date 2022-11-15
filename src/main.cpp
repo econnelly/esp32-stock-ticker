@@ -1,11 +1,5 @@
 #include "main.h"
 
-#define gray 0x6B6D
-#define blue 0x0967
-#define orange 0xC260
-#define purple 0x604D
-#define green 0x1AE9
-
 #define WIFI_SSID "****"
 #define WIFI_PW "****"
 
@@ -93,7 +87,8 @@ void getXVals(float data[5], float vals[3]) {
 
 void drawTitle(const char *title) {
   header.loadFont(NotoSansBold15);
-  header.setTextColor(TFT_WHITE, blue);
+  header.setTextColor(TFT_WHITE, TFT_BLACK);
+  header.fillRect(0, 0, 320, 50, TFT_BLACK);
   // header.fillRoundRect(0, 0, 320, 50, 4, blue);
   header.setTextSize(1);
   header.drawString(title, 10, 15);
@@ -148,6 +143,7 @@ void drawGraph(float data[5]) {
   getXVals(data, xVals);
   graph.setTextColor(TFT_WHITE, TFT_BLACK);
   graph.setTextSize(1);
+  graph.fillRect(0, 0, 205, 110, TFT_BLACK);
   // graph.fillRoundRect(0, 0, 205, 110, 4, green);
   for (int i = 0; i < 3; i++) {
     graph.drawString(String(xVals[i]), 4, 70 - ((i + 1) * 20));
@@ -161,6 +157,7 @@ void drawGraph(float data[5]) {
 
 void drawCurrentPrice(float currentPrice, float change) {
   // price.fillRoundRect(0, 0, 109, 110, 4, green);
+  price.fillRect(0, 0, 109, 110, TFT_BLACK);
   price.loadFont(NotoSansBold15);
   price.setTextColor(TFT_WHITE);
   price.drawString(String(currentPrice), 10, 10);
