@@ -1,7 +1,6 @@
 #include "main.h"
+#include "config.h"
 
-#define WIFI_SSID "****"
-#define WIFI_PW "****"
 
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite background = TFT_eSprite(&tft);
@@ -10,7 +9,7 @@ TFT_eSprite graph = TFT_eSprite(&tft);
 TFT_eSprite price = TFT_eSprite(&tft);
 TFT_eSprite lastUpdate = TFT_eSprite(&tft);
 
-WifiState wifiState = NOT_CONNECTED;
+wl_status_t wifiState = WL_DISCONNECTED;
 StockData stockData;
 
 int32_t lastUpdateTime = 0;
@@ -20,12 +19,9 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Hello T-Display-S3");
 
-  connectToWifi(NULL);
+  connectToWifiTask(NULL);
 
   // stockData = fetch_stock("GOOG");
-
-  // xTaskCreatePinnedToCore(connectToWifi, "Wifi", 5000, NULL, 1, NULL, ARDUINO_RUNNING_CORE);
-  xTaskCreatePinnedToCore(fetchStockBySymbol, "StockFetcher", 5000, (void *)"GOOG", 1, NULL, ARDUINO_RUNNING_CORE);
 
   tft.init();
   tft.fillScreen(TFT_BLACK);
@@ -46,24 +42,36 @@ void setup() {
 
   lastUpdate.createSprite(320, 50);
   lastUpdate.setSwapBytes(true);
+
+  // xTaskCreatePinnedToCore(connectToWifiTask, "Wifi", 5000, NULL, 1, NULL, ARDUINO_RUNNING_CORE);
+  xTaskCreatePinnedToCore(fetchStockTask, "StockFetcher", 5000, (void *)"GOOG", 1, NULL, ARDUINO_RUNNING_CORE);
 }
 
-void connectToWifi(void *parameter) {
-  wifiState = CONNECTING;
-  WiFi.begin(WIFI_SSID, WIFI_PW);
+void connectToWifiTask(void *parameter) {
+  if (wifiState == WL_CONNECTED) {
+    return;
+  }
+
+  wifiState = WiFi.begin(WIFI_SSID, WIFI_PW);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
-    Serial.println("Connecting to WiFi..");
   }
 
-  wifiState = CONNECTED;
-  Serial.println("Connected to the WiFi network");
+  wifiState = WiFi.status();
+
+  // if (WiFi.status() == WL_CONNECTED) {
+  //   return;
+  // } else {
+  //   Serial.println("Connecting to WiFi..");
+  //   wifiState = WiFi.begin(WIFI_SSID, WIFI_PW);
+  //   delay(1000);
+  // }
 }
 
-void fetchStockBySymbol(void *parameter) {
+void fetchStockTask(void *parameter) {
   for(;;) {
-    if (wifiState == CONNECTED) {
+    if (wifiState == WL_CONNECTED) {
       stockData = fetch_stock((char *)parameter);
       lastFetchTime = millis();
     }
@@ -210,7 +218,11 @@ void render() {
 
 void loop() {
   background.fillSprite(TFT_BLACK);
-  background.loadFont(NotoSansBold15);
+  if (wifiState != WL_CONNECTED) {
+    connectToWifiTask(NULL);
+    return;
+  }
+  // background.loadFont(NotoSansBold15);
 
   if (lastUpdateTime < lastFetchTime) {
     render();
