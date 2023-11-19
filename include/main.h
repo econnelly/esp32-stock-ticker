@@ -1,6 +1,13 @@
+#include <stdio.h>
+#include <stdlib.h>
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <WiFi.h>
+#include <WiFiManager.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <TimeLib.h>
+#include <Preferences.h>
 
 #include "NotoSansBold15.h"
 #include "NotoSansBold36.h"

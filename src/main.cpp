@@ -1,7 +1,6 @@
 #include "main.h"
 #include "config.h"
 
-
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite background = TFT_eSprite(&tft);
 TFT_eSprite header = TFT_eSprite(&tft);
@@ -15,13 +14,63 @@ StockData stockData;
 int32_t lastUpdateTime = 0;
 int32_t lastFetchTime = 0;
 
+WiFiUDP ntpUDP;
+
+WiFiManager wifiManager;
+WiFiManagerParameter api_token_param("api_token", "API Token", "", 100);
+WiFiManagerParameter ntp_server_param("ntp_server", "NTP Server", "pool.ntp.org", 100);
+
+bool shouldSaveConfig = false;
+Preferences preferences;
+char api_token[100];
+char ntp_server[100];
+
+// By default 'pool.ntp.org' is used with 60 seconds update interval and
+// no offset
+NTPClient timeClient(ntpUDP);
+time_t getTimeSync();
+
+void saveConfigCallback() {
+  shouldSaveConfig = true;
+}
+
 void setup() {
   Serial.begin(115200);
-  Serial.println("Hello T-Display-S3");
+  Serial.write("Starting...\n");
+  // wifiManager.resetSettings();
 
-  connectToWifiTask(NULL);
+  wifiManager.setSaveConfigCallback(saveConfigCallback);
+  wifiManager.addParameter(&api_token_param);
+  wifiManager.addParameter(&ntp_server_param);
+  wifiManager.autoConnect("ESP32 Stock Ticker", "tothemoon");
 
-  // stockData = fetch_stock("GOOG");
+  strcpy(api_token, api_token_param.getValue());
+  strcpy(ntp_server, ntp_server_param.getValue());
+
+  preferences.begin("ticker_config", false);
+
+
+  if (shouldSaveConfig) {
+    preferences.putString("api_token", api_token);
+    preferences.putString("ntp_server", ntp_server);
+  } else {
+    strcpy(api_token, preferences.getString("api_token", "\0").c_str());
+    strcpy(ntp_server, preferences.getString("ntp_server", "\0").c_str());
+  }
+
+  // connectToWifiTask(NULL);
+  
+  Serial.write("Connected: ");
+  if (WiFi.isConnected()) {
+    wifiState = WL_CONNECTED;
+    Serial.write("true\n");
+  } else {
+    Serial.write("false\n");
+  }
+
+  timeClient.begin();
+
+  Serial.write("Initializing screen...\n");
 
   tft.init();
   tft.fillScreen(TFT_BLACK);
@@ -43,39 +92,76 @@ void setup() {
   lastUpdate.createSprite(320, 50);
   lastUpdate.setSwapBytes(true);
 
+  setSyncProvider(getTimeSync);
+  Serial.write("Time sync scheduled\n");
+
   // xTaskCreatePinnedToCore(connectToWifiTask, "Wifi", 5000, NULL, 1, NULL, ARDUINO_RUNNING_CORE);
   xTaskCreatePinnedToCore(fetchStockTask, "StockFetcher", 5000, (void *)"GOOG", 1, NULL, ARDUINO_RUNNING_CORE);
 }
 
-void connectToWifiTask(void *parameter) {
-  if (wifiState == WL_CONNECTED) {
-    return;
-  }
-
-  wifiState = WiFi.begin(WIFI_SSID, WIFI_PW);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-  }
-
-  wifiState = WiFi.status();
-
-  // if (WiFi.status() == WL_CONNECTED) {
-  //   return;
-  // } else {
-  //   Serial.println("Connecting to WiFi..");
-  //   wifiState = WiFi.begin(WIFI_SSID, WIFI_PW);
-  //   delay(1000);
-  // }
+time_t getTimeSync() {
+  unsigned long epochTime = timeClient.getEpochTime();
+    Serial.write("Current Time: ");
+    char buffer [sizeof(unsigned long)*8+1];
+    Serial.write(ultoa(epochTime, buffer, 10));
+    Serial.write("\n");
+    return epochTime;
 }
 
 void fetchStockTask(void *parameter) {
   for(;;) {
-    if (wifiState == WL_CONNECTED) {
-      stockData = fetch_stock((char *)parameter);
+    if (wifiState == WL_CONNECTED && timeClient.isTimeSet()) {
+      unsigned long unix_epoch = timeClient.getEpochTime();
+      Serial.write("Fetching stock data...\n");
+      Serial.println(unix_epoch);
+      Serial.printf("%d-%d-%d\n", year(unix_epoch), month(unix_epoch), day(unix_epoch));
+      char end_date[20];
+      
+      snprintf(end_date, 20, "%d-%d-%d", year(unix_epoch), month(unix_epoch), day(unix_epoch));
+
+      unsigned long start_epoch = unix_epoch - (86400 * 8);
+      char start_date[20];
+      snprintf(start_date, 20, "%d-%d-%d", year(start_epoch), month(start_epoch), day(start_epoch));
+      Serial.printf("start: %s\nend: %s\napi: %s\n", start_date, end_date, api_token);
+
+      if (api_token == NULL) {
+        break;
+      }
+
+      StockData fetchedData = fetch_stock(api_token, (char *)parameter, start_date, end_date);
+      
+      Serial.println("Returned from fetch_stock()\n");
+      stockData.company = fetchedData.company;
+      stockData.current_price = fetchedData.current_price;
+      stockData.after_hours_change = fetchedData.after_hours_change;
+      stockData.price_change = fetchedData.price_change;
+      stockData.last_update = fetchedData.last_update;
+      stockData.last_update = fetchedData.last_update;
+
+      size_t history_size = sizeof(stockData.price_history)/sizeof(stockData.price_history[0]);
+      for (int i = 0; i < history_size; i++) {
+        stockData.price_history[i] = fetchedData.price_history[i];
+      }
+
       lastFetchTime = millis();
+      vTaskDelay(60000);
+    } else {
+      Serial.write("Waiting to initialize...\n");
+      Serial.write("Wifi connected: ");
+      if (wifiState == WL_CONNECTED) {
+        Serial.write("true\n");
+      } else {
+        Serial.write("false\n");
+      }
+      Serial.write("Time set: ");
+      if (timeClient.isTimeSet()) {
+        Serial.write("true\n");
+      } else {
+        Serial.write("false\n");
+      }
+      vTaskDelay(5000);
     }
-    vTaskDelay(5000);
+    
   }
 }
 
@@ -148,7 +234,7 @@ void drawGraphLines(float data[5], int width, int height, int xOffset, int yOffs
     int x2 = xscale * i + xOffset;
     int y2 = yvals[i] + yOffset;
 
-    Serial.println(String(x1));
+    // Serial.println(String(x1));
 
     graph.drawWideLine(x1, y1, x2, y2, 2, TFT_WHITE);
   }
@@ -208,24 +294,26 @@ void drawLastUpdate(char *updateMessage) {
 }
 
 void render() {
-  drawTitle(stockData.company);
-  drawGraph(stockData.price_history);
-  drawCurrentPrice(stockData.current_price, stockData.price_change);
-  drawLastUpdate(stockData.last_update);
+  if (stockData.company == NULL) {
+    drawTitle("No Data");
+  } else {
+    drawTitle(stockData.company);
+    drawGraph(stockData.price_history);
+    drawCurrentPrice(stockData.current_price, stockData.price_change);
+    drawLastUpdate(stockData.last_update);
+  }
 
   background.pushSprite(0, 0);
 }
 
 void loop() {
   background.fillSprite(TFT_BLACK);
-  if (wifiState != WL_CONNECTED) {
-    connectToWifiTask(NULL);
-    return;
-  }
   // background.loadFont(NotoSansBold15);
 
   if (lastUpdateTime < lastFetchTime) {
     render();
     lastUpdateTime = millis();
   }
+
+  timeClient.update();
 }
